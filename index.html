@@ -414,6 +414,7 @@ function viewDashboard(){
   const b=bench?bestE1RM(bench.id):{e1rm:0};const rw=row?bestE1RM(row.id):{e1rm:0};
   const rem=reminders();
   const todayDone=state.workouts.filter(w=>w.date===isoToday()&&w.completed).sort((a,b)=>a.id<b.id?1:-1)[0];
+  const todayCardio=state.cardio.filter(c=>c.date===isoToday()).sort((a,b)=>a.id<b.id?1:-1)[0];
   return `
   <div class="row between" style="margin-bottom:14px">
     <div><div class="eyebrow">Coach</div><h1 style="font-size:26px">Hi ${state.profile.name}</h1></div>
@@ -440,12 +441,16 @@ function viewDashboard(){
   <div class="card">
     <div class="row between" style="margin-bottom:8px">
       <div><div class="eyebrow">Today \u00b7 ${today}</div><h2 style="font-size:19px">${todayDone?todayDone.type+" \u2014 done":(plan?plan.title:"Rest")}</h2></div>
-      ${todayDone?`<span class="pill" style="background:var(--teal-d);color:var(--teal)">\u2713 complete</span>`:plan&&plan.type!=="Rest"?`<span class="pill teal">${plan.type}</span>`:""}
+      ${(todayDone||todayCardio)?`<span class="pill" style="background:var(--teal-d);color:var(--teal)">\u2713 complete</span>`:plan&&plan.type!=="Rest"?`<span class="pill teal">${plan.type}</span>`:""}
     </div>
     ${todayDone
       ? `<div style="font-size:14px;margin-bottom:12px;color:var(--green)">\u2713 Logged today: ${todayDone.sets.length} sets across ${[...new Set(todayDone.sets.map(s=>s.exercise))].length} exercises.</div>
          <button class="btn sec" onclick="reviewSession('${todayDone.id}')">Review today's workout</button>
          <div style="height:8px"></div><button class="btn ghost" onclick="startPlanned()">Start another session</button>`
+      : todayCardio
+      ? `<div style="font-size:14px;margin-bottom:12px;color:var(--green)">\u2713 Cardio logged: ${todayCardio.activity}${todayCardio.durationSec ? ' \u00b7 '+Math.round(todayCardio.durationSec/60)+'m' : ''}</div>
+         <button class="btn sec" onclick="openCardio()">Log more cardio</button>
+         <div style="height:8px"></div><button class="btn ghost" onclick="startBlank()">Lift instead</button>`
       : hasStrength
       ? `<div class="muted" style="font-size:14px;margin-bottom:12px">${exCount} exercises${plan.warmup&&plan.warmup.length?` \u00b7 ${plan.warmup.length} min warmup`:''}${plan.imported?' \u00b7 your plan':plan.auto?' \u00b7 fresh mix':''}</div><button class="btn" onclick="startPlanned()">Start Workout</button>`
       : plan&&plan.flex
@@ -800,11 +805,13 @@ function viewSettings(){const p=state.profile;
     <div style="height:8px"></div><button class="btn sec" onclick="mergeImport()">Merge in</button></div>
   <div class="card"><div class="eyebrow">Logged workouts \u00b7 newest first</div>
     <p class="muted" style="font-size:12px;margin:8px 0">Tap one to review or delete it. Use this to clear a duplicate.</p>
-    ${state.workouts.slice().sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:(String(a.id)<String(b.id)?1:-1)).slice(0,25).map(w=>{
-      const exs=[...new Set(w.sets.map(s=>s.exercise))];
-      return `<div class="card tight" style="margin-bottom:8px;cursor:pointer" onclick="reviewSession('${w.id}')">
-        <div class="row between"><b>${shortDate(w.date)} \u00b7 ${w.type}</b><span class="muted" style="font-size:12px">${w.sets.length} sets</span></div>
-        <div class="muted" style="font-size:12px;margin-top:2px">${exs.slice(0,4).join(', ')}${exs.length>4?'\u2026':''}</div></div>`;}).join("")}</div>
+    ${[...state.workouts.map(w=>({...w,_type:'w'})),...state.cardio.map(c=>({...c,_type:'c'}))].sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:(String(a.id)<String(b.id)?1:-1)).slice(0,25).map(item=>{
+      if(item._type==='w'){const exs=[...new Set(item.sets.map(s=>s.exercise))];return `<div class="card tight" style="margin-bottom:8px;cursor:pointer" onclick="reviewSession('${item.id}')">
+        <div class="row between"><b>${shortDate(item.date)} \u00b7 ${item.type}</b><span class="muted" style="font-size:12px">${item.sets.length} sets</span></div>
+        <div class="muted" style="font-size:12px;margin-top:2px">${exs.slice(0,4).join(', ')}${exs.length>4?'\u2026':''}</div></div>`;}
+      return `<div class="card tight" style="margin-bottom:8px">
+        <div class="row between"><b>${shortDate(item.date)} \u00b7 Cardio</b><span class="muted" style="font-size:12px">${item.durationSec?Math.round(item.durationSec/60)+'m':''}</span></div>
+        <div class="muted" style="font-size:12px;margin-top:2px">${item.activity||'Cardio'}</div></div>`;}).join("")}</div>
   <p class="faint" style="font-size:12px;text-align:center">Coach \u00b7 local build \u00b7 ${state.exercises.length} exercises, ${state.workouts.length} workouts</p>`;}
 function mergeImport(){const text=(document.getElementById("mergeBox").value||"").trim();if(!text){toast("Paste JSON first.");return;}
   let data;try{data=JSON.parse(text);}catch(e){toast("That JSON didn't parse.");return;}
