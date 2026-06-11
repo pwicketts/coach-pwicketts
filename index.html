@@ -376,6 +376,7 @@ function render(){
   const r=(location.hash||"#/dashboard").slice(1);const root=document.getElementById("root");
   if(r==="/log")root.innerHTML=viewLog();
   else if(r==="/plan")root.innerHTML=viewPlan();
+  else if(r==="/preview")root.innerHTML=renderPreview();
   else if(r==="/progress")root.innerHTML=viewProgress();
   else if(r==="/coach")root.innerHTML=viewCoach();
   else if(r==="/settings")root.innerHTML=viewSettings();
@@ -689,10 +690,97 @@ function viewPlan(){const days=["Monday","Tuesday","Wednesday","Thursday","Frida
         :p.flex?`<div class="muted" style="font-size:14px;margin-top:8px">Open \u2014 log any cardio you choose.</div>`:''}
       ${loggedTxt?`<div style="font-size:13px;margin-top:8px;color:var(--green)">\u2713 Logged this week: ${loggedTxt}</div>`:''}
       <div class="row wrap" style="gap:8px;margin-top:10px">
-        ${(p.auto||(p.exercises&&p.exercises.length))?`<button class="btn sm sec" onclick="startPlannedDay('${d}')">Start this workout</button>`:''}
+        ${(p.auto||(p.exercises&&p.exercises.length))?`<button class="btn sm sec" onclick="startPlannedDay('${d}')">Start this workout</button>
+          <button class="btn sm ghost" onclick="previewDay('${d}','${iso}')">Preview &amp; edit</button>`:``}
         ${p.flex?`<button class="btn sm sec" onclick="openCardio()">Log cardio</button>`:''}
         ${last?`<button class="btn sm ghost" onclick="reviewSession('${last.id}')">Review last (${shortDate(last.date)})</button>`:''}
       </div></div>`;}).join("")}`;}
+function previewDay(dayName, iso) {
+  const plan = state.plan[dayName];
+  if (!plan) return;
+  // Use saved planned workout if exists, else generate
+  let exercises;
+  if (state.planned[iso]) {
+    exercises = state.planned[iso].exercises;
+  } else if (plan.auto) {
+    exercises = generateDay(plan.type);
+  } else if (plan.exercises && plan.exercises.length) {
+    exercises = plan.exercises.map(p => ({exId:p.exId,repLow:p.repLow,repHigh:p.repHigh,cue:"",note:"",rpe:null,
+      sets:[...Array(p.sets)].map((_,i)=>newSet(i+1,suggestWeight(p.exId,p.repHigh)||""))}));
+  }
+  if (!exercises || !exercises.length) { toast("No exercises for this day."); return; }
+  // Store preview in temp state
+  state._preview = {dayName, iso, type: plan.type, title: plan.title, warmup: plan.warmup||[], exercises};
+  save();
+  nav('/preview');
+}
+
+function renderPreview() {
+  const p = state._preview;
+  if (!p) { nav('/plan'); return; }
+  const saved = !!state.planned[p.iso];
+  return `<div class="row between" style="margin-bottom:4px">
+    <h1 style="margin-bottom:0">${p.title}</h1>
+    <span class="pill teal">${p.type}</span>
+  </div>
+  <p class="muted" style="margin-top:0;margin-bottom:14px">${p.dayName} &middot; ${shortDate(p.iso)}${saved?' &middot; <span style="color:var(--green)">&#10003; saved</span>':''}</p>
+  <div id="preview-exlist">
+  ${p.exercises.map((ex,i) => {
+    const xobj = exById(ex.exId);
+    const nm = xobj ? xobj.name : 'Unknown';
+    const sets = ex.sets ? ex.sets.length : 3;
+    const repRange = (ex.repLow&&ex.repHigh) ? ex.repLow+'-'+ex.repHigh+' reps' : ex.repHigh ? ex.repHigh+' reps' : '';
+    return `<div class="card" style="margin-bottom:10px" id="prevex-${i}">
+      <div class="row between">
+        <div><b style="font-size:15px">${nm}</b><div class="muted" style="font-size:13px;margin-top:2px">${sets} sets${repRange?' &middot; '+repRange:''}</div></div>
+        <button class="btn sm ghost" onclick="previewSwapEx(${i})">Swap</button>
+      </div>
+    </div>`;
+  }).join('')}
+  </div>
+  <button class="btn" style="margin-bottom:10px" onclick="savePreviewPlan()">&#10003; Save this plan for ${p.dayName}</button>
+  <div style="height:6px"></div>
+  <button class="btn ghost" onclick="previewReroll()">&#127922; Reroll exercises</button>
+  <div style="height:6px"></div>
+  <button class="btn ghost" onclick="nav('/plan')">Back to Weekly Plan</button>`;
+}
+
+function savePreviewPlan() {
+  const p = state._preview;
+  if (!p) return;
+  state.planned[p.iso] = {title:p.title, type:p.type, warmup:p.warmup, exercises:p.exercises};
+  save();
+  toast(p.dayName + " plan saved. It will load automatically when you start.");
+  nav('/plan');
+}
+
+function previewReroll() {
+  const p = state._preview;
+  if (!p || !SLOTS[p.type]) { toast("Can\'t reroll this type."); return; }
+  p.exercises = generateDay(p.type);
+  save();
+  render();
+  toast("New mix \uD83C\uDFB2");
+}
+
+function previewSwapEx(idx) {
+  const p = state._preview;
+  if (!p) return;
+  const ex = p.exercises[idx];
+  const xobj = exById(ex.exId);
+  if (!xobj) return;
+  // Find exercises of same slot/muscle group
+  const slot = xobj.slot || xobj.tags || '';
+  const candidates = state.exercises.filter(e => e.id !== ex.exId && (e.slot === xobj.slot || (xobj.tags && e.tags && e.tags.some(t => xobj.tags.includes(t)))));
+  const pool = candidates.length > 0 ? candidates : state.exercises.filter(e => e.id !== ex.exId);
+  const pick = pool[Math.floor(Math.random() * pool.length)];
+  if (!pick) { toast("No alternatives found."); return; }
+  p.exercises[idx] = {...ex, exId: pick.id, sets: [...Array(ex.sets ? ex.sets.length : 3)].map((_,i) => newSet(i+1, suggestWeight(pick.id, ex.repHigh)||""))};
+  save();
+  render();
+  toast("Swapped to " + pick.name);
+}
+
 function reviewSession(id){const w=state.workouts.find(x=>x.id===id);if(!w)return;const byEx={};
   w.sets.forEach(s=>{(byEx[s.exercise]=byEx[s.exercise]||[]).push(s);});
   openSheet(`<h2 style="margin-bottom:2px">${w.type} \u00b7 ${shortDate(w.date)}</h2>
