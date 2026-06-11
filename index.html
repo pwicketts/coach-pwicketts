@@ -126,7 +126,11 @@ async function supabaseRequest(path, method="GET", body=null) {
 async function syncToCloud() {
   if (!userEmail) return;
   const payload = {email: userEmail, data: JSON.stringify(state), synced_at: new Date().toISOString()};
-  await supabaseRequest("/rest/v1/user_state", "POST", payload);
+  const headers = {"apikey": SUPABASE_ANON_KEY, "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates"};
+  try {
+    const res = await fetch(SUPABASE_URL + "/rest/v1/user_state", {method: "POST", headers, body: JSON.stringify(payload)});
+    if (!res.ok) console.error("Sync error: HTTP " + res.status);
+  } catch(e) { console.error("Sync error:", e.message); }
 }
 
 async function syncFromCloud() {
@@ -160,7 +164,10 @@ function stopAutoSync() {
 
 function initAuth() {
   userEmail = localStorage.getItem("userEmail");
-  if (userEmail) startAutoSync();
+  if (userEmail) {
+    startAutoSync();
+    syncFromCloud().then(() => render());
+  }
 }
 
 function logout() {
