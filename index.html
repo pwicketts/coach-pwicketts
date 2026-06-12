@@ -366,6 +366,8 @@ if(!state.exercises)state.exercises=SEED.exercises;
 if(!state.plan)state.plan=defaultPlan();
 if(!state.skips)state.skips=[];
 if(!state.planned)state.planned={};
+// Injected plan
+Object.assign(state.planned, {"2026-06-12":{"title":"Full Body Workout","type":"Full Body","warmup":["Body Weight Squat","Barbell Bench Press"],"exercises":[{"exId":171,"sets":3,"repLow":8,"repHigh":12,"suggestedWeight":null,"note":""},{"exId":25,"sets":3,"repLow":8,"repHigh":12,"suggestedWeight":70.0,"note":""},{"exId":168,"sets":3,"repLow":15,"repHigh":20,"suggestedWeight":35.0,"note":"explosive hip drive"},{"exId":67,"sets":3,"repLow":10,"repHigh":15,"suggestedWeight":85.0,"note":""},{"exId":223,"sets":3,"repLow":10,"repHigh":15,"suggestedWeight":35.0,"note":""},{"exId":142,"sets":3,"repLow":null,"repHigh":null,"suggestedWeight":null,"note":"30-60 sec"},{"exId":128,"sets":3,"repLow":null,"repHigh":null,"suggestedWeight":null,"note":"30-60 sec"}]}}); Store.save(state);
 applyTheme(state.theme||"night");
 function save(){Store.save(state);if(userEmail)syncToCloud();}
 function nav(r){const t="#"+r;if(location.hash===t){render();}else{location.hash=r;}}
