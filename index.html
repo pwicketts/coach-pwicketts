@@ -135,15 +135,24 @@ async function syncToCloud() {
 
 async function syncFromCloud() {
   if (!userEmail) return;
-  const res = await supabaseRequest(`/rest/v1/user_state?email=eq.${encodeURIComponent(userEmail)}&select=data&order=synced_at.desc&limit=1`);
+  const res = await supabaseRequest(`/rest/v1/user_state?email=eq.${encodeURIComponent(userEmail)}&select=data,synced_at&order=synced_at.desc&limit=1`);
   if (res && res.length > 0) {
     try {
       const cloudState = JSON.parse(res[0].data);
+      const cloudTime = new Date(res[0].synced_at).getTime();
+      const localTime = state._savedAt ? new Date(state._savedAt).getTime() : 0;
+      // Only apply cloud state if it's newer than local
+      if (cloudTime <= localTime) return true;
       const localW = state.workouts || [];
       const localC = state.cardio || [];
+      const localPlanned = state.planned || {};
       state = cloudState;
+      // Merge any local-only workouts/cardio
       (localW || []).forEach(lw => {if (!state.workouts.some(w => w.id === lw.id)) state.workouts.push(lw);});
       (localC || []).forEach(lc => {if (!state.cardio.some(c => c.id === lc.id)) state.cardio.push(lc);});
+      // Merge planned workouts (local wins for same date)
+      Object.keys(localPlanned).forEach(k => { if (!state.planned[k]) state.planned[k] = localPlanned[k]; });
+      if (!state.planned) state.planned = {};
       save();
       return true;
     } catch (e) {
@@ -366,10 +375,9 @@ if(!state.exercises)state.exercises=SEED.exercises;
 if(!state.plan)state.plan=defaultPlan();
 if(!state.skips)state.skips=[];
 if(!state.planned)state.planned={};
-// Coach-injected plans
 if(!state.planned['2026-06-12']){Object.assign(state.planned,{"2026-06-12":{"title":"Full Body Workout","type":"Full Body","warmup":["Body Weight Squat","Barbell Bench Press"],"exercises":[{"exId":171,"sets":3,"repLow":8,"repHigh":12,"suggestedWeight":null,"note":""},{"exId":25,"sets":3,"repLow":8,"repHigh":12,"suggestedWeight":70.0,"note":""},{"exId":168,"sets":3,"repLow":15,"repHigh":20,"suggestedWeight":35.0,"note":""},{"exId":67,"sets":3,"repLow":10,"repHigh":15,"suggestedWeight":85.0,"note":""},{"exId":223,"sets":3,"repLow":10,"repHigh":15,"suggestedWeight":80.0,"note":""},{"exId":142,"sets":3,"repLow":null,"repHigh":null,"suggestedWeight":null,"note":""},{"exId":128,"sets":3,"repLow":null,"repHigh":null,"suggestedWeight":null,"note":""}]}});Store.save(state);}
 applyTheme(state.theme||"night");
-function save(){Store.save(state);if(userEmail)syncToCloud();}
+function save(){state._savedAt=new Date().toISOString();Store.save(state);if(userEmail)syncToCloud();}
 function nav(r){const t="#"+r;if(location.hash===t){render();}else{location.hash=r;}}
 window.addEventListener("hashchange",render);
 let _authInitialized=false;
